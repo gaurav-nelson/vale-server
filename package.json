@@ -1,0 +1,15 @@
+{
+  "name": "vale-server",
+  "version": "1.0.0",
+  "description": "API backend for Vale with Vale at Red Hat rules",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Gaurav Nelson",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "fastify": "^5.0.0"
+  }
+}
