@@ -1,11 +1,15 @@
 import Fastify from "fastify";
-import { spawn } from "child_process";
+import { Worker } from "worker_threads";
 
 const { ADDRESS = 'localhost', PORT = '3000' } = process.env;
 
 const fastify = Fastify({
   logger: true,
 });
+await fastify.register(import('@fastify/rate-limit'), {
+  max: 100,
+  timeWindow: '1 minute'
+})
 
 const lintSchema = {
   body: {
@@ -17,32 +21,35 @@ const lintSchema = {
   },
 };
 
+const activeWorkers = new Set();
+
 const runVale = async (text) => {
   return new Promise((resolve, reject) => {
-    const vale = spawn("vale", ["--output=JSON", text]);
-
-    let output = "";
-    let errorOutput = "";
-
-    vale.stdout.on("data", (data) => {
-      output += data.toString();
+    const worker = new Worker("./valeWorker.js", {
+      workerData: { text },
     });
 
-    vale.stderr.on("data", (data) => {
-      errorOutput += data.toString();
-    });
+    activeWorkers.add(worker);
 
-    vale.on("close", (code) => {
-      try {
-        const jsonResponse = JSON.parse(output);
-        resolve(jsonResponse);
-      } catch (err) {
-        reject(new Error("Failed to parse JSON output"));
+    worker.on("message", (result) => {
+      activeWorkers.delete(worker);
+      if (result.error) {
+        reject(new Error(result.error));
+      } else {
+        resolve(result);
       }
     });
 
-    vale.on("error", (err) => {
+    worker.on("error", (err) => {
+      activeWorkers.delete(worker);
       reject(err);
+    });
+
+    worker.on("exit", (code) => {
+      activeWorkers.delete(worker);
+      if (code !== 0) {
+        reject(new Error(`Worker stopped with exit code ${code}`));
+      }
     });
   });
 };
@@ -87,6 +94,9 @@ process.on("SIGINT", async () => {
   fastify.log.info("SIGINT received. Gracefully shutting down...");
   try {
     await fastify.close();
+    for (const worker of activeWorkers) {
+      worker.terminate();
+    }
     fastify.log.info("Server closed successfully.");
     process.exit(0);
   } catch (err) {

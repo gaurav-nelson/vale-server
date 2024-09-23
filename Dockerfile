@@ -9,12 +9,11 @@ RUN npm install --omit=dev
 
 COPY . ./
 
+# Stage 2: Production stage
 FROM alpine:3.20
 
-RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/testing >>/etc/apk/repositories
-
-# gem install uri is a vulnerability fix
-RUN apk update && \
+RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories && \
+    apk update && \
     apk upgrade && \
     apk add --no-cache vale nodejs && \
     rm -rf /var/cache/apk/*
@@ -25,4 +24,4 @@ COPY --from=build /usr/src/app /usr/src/app
 
 ENV ADDRESS=0.0.0.0 PORT=3000
 
-CMD [ "node", "index.js" ]
+CMD ["node", "index.js"]
