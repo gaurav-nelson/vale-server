@@ -37,9 +37,8 @@ jobs:
       - name: Parse tags
         id: parse_tags
         run: |
-          echo "tags<<EOF" >> $GITHUB_OUTPUT
-          echo "${{ github.event.inputs.tags }}" | tr ',' '\n' | sed 's/^/quay.io\/ganelson\/vale-server:/g' | tr '\n' ',' | sed 's/,$//' >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          TAGS=$(echo "${{ github.event.inputs.tags }}" | tr ',' '\n' | sed 's/^/quay.io\/ganelson\/vale-server:/g' | paste -sd "," -)
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v6
