@@ -78,6 +78,18 @@ fastify.route({
   },
 });
 
+fastify.route({
+  method: "GET",
+  url: "/health",
+  handler: async (request, reply) => {
+    reply.code(200).send({
+      status: "ok",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
+  },
+});
+
 const startServer = async () => {
   try {
     await fastify.listen({ host: ADDRESS, port: parseInt(PORT, 10) });
