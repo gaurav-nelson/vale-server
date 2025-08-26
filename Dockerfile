@@ -10,7 +10,7 @@ RUN npm install --omit=dev
 COPY . ./
 
 # Stage 2: Production stage
-FROM alpine:3.20
+FROM alpine:3.22
 
 RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/community >> /etc/apk/repositories && \
     apk update && \
@@ -25,5 +25,7 @@ COPY --from=build /usr/src/app /usr/src/app
 RUN vale sync
 
 ENV ADDRESS=0.0.0.0 PORT=3000
+
+EXPOSE 3000
 
 CMD ["node", "index.js"]
