@@ -22,6 +22,8 @@ WORKDIR /usr/src/app
 
 COPY --from=build /usr/src/app /usr/src/app
 
+RUN vale sync
+
 ENV ADDRESS=0.0.0.0 PORT=3000
 
 CMD ["node", "index.js"]
