@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vale Linter</title>
+    <!-- Pico CSS (CDN) -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@picocss/pico@1.5.13/css/pico.min.css"
+    />
+    <style>
+  :root {
+        --highlight-suggestion-bg: hsl(200 90% 50% / 0.15);
+        --highlight-warning-bg: hsl(45 100% 50% / 0.20);
+        --highlight-error-bg: hsl(0 85% 55% / 0.20);
+        --highlight-suggestion-fg: hsl(200 90% 35%);
+        --highlight-warning-fg: hsl(35 95% 35%);
+        --highlight-error-fg: hsl(0 75% 40%);
+  --code-bg: var(--muted-border-color, #e6e6e6);
+  --header-h: 0px; /* will be measured in JS */
+  --footer-h: 0px; /* will be measured in JS */
+      }
+
+      html, body {
+        height: 100%;
+        overflow: hidden; /* no page scroll; editor area can scroll internally */
+      }
+
+      /* App shell */
+      .app-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        background: var(--background-color);
+        border-bottom: 1px solid var(--muted-border-color);
+      }
+  .app-header nav { display: flex; align-items: center; padding: 0.5rem 0; }
+
+      .app-main {
+        position: fixed;
+        top: var(--header-h);
+        bottom: var(--footer-h);
+        left: 0;
+        right: 0;
+        overflow: hidden; /* keep scroll inside editor */
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .app-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        background: var(--background-color);
+        border-top: 1px solid var(--muted-border-color);
+      }
+  .app-footer .container { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; }
+
+      .grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: 1fr;
+      }
+
+      @media (min-width: 992px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      textarea {
+        min-height: 320px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        line-height: 1.5;
+      }
+
+      /* Overlay editor */
+      .editor {
+        position: relative;
+      }
+      .editor [contenteditable="true"] {
+        min-height: 320px;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--muted-border-color);
+        border-radius: var(--border-radius);
+        background: var(--code-bg);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        line-height: 1.5;
+        white-space: pre-wrap; /* preserve spaces and line breaks */
+        word-break: break-word;
+        outline: none;
+        tab-size: 4;
+      }
+      .editor [contenteditable="true"]:empty:before {
+        content: attr(data-placeholder);
+        color: var(--muted-color);
+      }
+
+      .hl {
+        position: relative;
+        border-radius: 4px;
+        padding: 0.05rem 0.2rem;
+        cursor: help;
+        pointer-events: auto;
+      }
+  .hl.suggestion { background: var(--highlight-suggestion-bg); color: var(--highlight-suggestion-fg); }
+  .hl.warning { background: var(--highlight-warning-bg); color: var(--highlight-warning-fg); }
+  .hl.error { background: var(--highlight-error-bg); color: var(--highlight-error-fg); }
+
+      /* Floating tooltip container (managed by JS) */
+      #tooltip {
+        position: fixed;
+        z-index: 9999;
+        max-width: 48ch;
+        background: var(--card-background-color);
+        color: var(--color);
+        border: 1px solid var(--muted-border-color);
+        border-radius: var(--border-radius);
+        padding: 0.35rem 0.5rem;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+        white-space: normal;
+        font-size: 0.875rem;
+        display: none;
+        pointer-events: none;
+      }
+
+      /* Disable Pico's CSS tooltips on our highlights to avoid double-tooltips */
+      .hl[data-tooltip]::after,
+      .hl[data-tooltip]::before {
+        display: none !important;
+        content: none !important;
+      }
+
+      .legend {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        font-size: 0.9rem;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        border: 1px solid var(--muted-border-color);
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+      }
+      .chip .swatch {
+        width: 0.85rem;
+        height: 0.85rem;
+        display: inline-block;
+        border-radius: 3px;
+      }
+      .swatch.suggestion { background: var(--highlight-suggestion-bg); border: 2px solid var(--highlight-suggestion-fg); }
+      .swatch.warning { background: var(--highlight-warning-bg); border: 2px solid var(--highlight-warning-fg); }
+      .swatch.error { background: var(--highlight-error-bg); border: 2px solid var(--highlight-error-fg); }
+
+      .controls {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .small { font-size: 0.9rem; color: var(--muted-color); }
+    </style>
+  </head>
+  <body>
+    <header class="app-header">
+      <nav class="container">
+        <ul>
+          <li><strong>Vale Linter</strong></li>
+        </ul>
+        <ul>
+          <li>
+            <select id="themeSelect" aria-label="Theme">
+              <option value="auto">Auto</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </li>
+          <li><button id="lintBtn">Lint</button></li>
+          <li><button id="clearBtn" class="secondary">Clear</button></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="app-main container">
+      <p class="small" style="margin:.5rem 0 0 0;">Enter text, then click Lint to highlight issues. Hover highlighted words to see details.</p>
+
+      <section>
+        <label for="editor">Input</label>
+        <div class="editor" style="flex:1; display:flex; min-height: 0;">
+          <div id="editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Paste or type your content here..." style="flex:1; min-height: 0; height: 100%; overflow: auto;"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <div class="container">
+        <div class="legend" aria-hidden="false" style="display:flex; gap:.75rem;">
+          <span class="chip"><span class="swatch error"></span>Error</span>
+          <span class="chip"><span class="swatch warning"></span>Warning</span>
+          <span class="chip"><span class="swatch suggestion"></span>Suggestion</span>
+        </div>
+        <small id="status" role="status" aria-live="polite" class="small"> </small>
+      </div>
+    </footer>
+
+    <script>
+  const editor = document.getElementById('editor');
+      const lintBtn = document.getElementById('lintBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const statusEl = document.getElementById('status');
+      const themeSelect = document.getElementById('themeSelect');
+
+      // Layout sizing: compute header/footer heights and size the editor area to fill space
+      function sizeEditor() {
+        const header = document.querySelector('.app-header');
+        const footer = document.querySelector('.app-footer');
+        const root = document.documentElement;
+        const headerH = header ? header.getBoundingClientRect().height : 0;
+        const footerH = footer ? footer.getBoundingClientRect().height : 0;
+        root.style.setProperty('--header-h', headerH + 'px');
+        root.style.setProperty('--footer-h', footerH + 'px');
+        // Ensure the editor fills available height inside app-main
+        const main = document.querySelector('.app-main');
+        if (main) {
+          const mainRect = main.getBoundingClientRect();
+          const section = main.querySelector('section');
+          if (section) {
+            // Set editor to fill remaining vertical space within section
+            const label = section.querySelector('label');
+            const editorWrap = section.querySelector('.editor');
+            if (editorWrap) {
+              const extra = (label ? label.getBoundingClientRect().height : 0) + 16; // small gap
+              const avail = Math.max(200, mainRect.height - extra);
+              editorWrap.style.height = avail + 'px';
+              editor.style.height = '100%';
+            }
+          }
+        }
+      }
+      window.addEventListener('resize', () => requestAnimationFrame(sizeEditor));
+      window.addEventListener('load', () => requestAnimationFrame(sizeEditor));
+
+  const severityClass = (sev) => {
+        if (!sev) return 'warning';
+        const s = String(sev).toLowerCase();
+        if (s.includes('error')) return 'error';
+        if (s.includes('warn')) return 'warning';
+        return 'suggestion';
+      };
+
+      function sanitize(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Remove HTML tags from tooltip text (keep only message text)
+      function sanitizePlain(text) {
+        return String(text).replace(/<[^>]*>/g, '');
+      }
+
+  function renderHighlights(rawText, issuesJson) {
+        // Map line -> array of issues with computed ranges
+        const byLine = new Map();
+        const fileKeys = Object.keys(issuesJson || {});
+        for (const file of fileKeys) {
+          const arr = issuesJson[file] || [];
+          for (const it of arr) {
+            const lineIdx = Math.max(0, (it.Line || 1) - 1);
+            if (!byLine.has(lineIdx)) byLine.set(lineIdx, []);
+            byLine.get(lineIdx).push(it);
+          }
+        }
+
+        const lines = rawText.split(/\n/);
+        const outLines = [];
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const issues = (byLine.get(i) || []).slice();
+          // Sort by start column (Span[0]) if present, fallback to first index of Match
+          issues.sort((a, b) => {
+            const aStart = (a.Span && a.Span[0]) ? a.Span[0] : Math.max(0, line.indexOf(a.Match)) + 1;
+            const bStart = (b.Span && b.Span[0]) ? b.Span[0] : Math.max(0, line.indexOf(b.Match)) + 1;
+            return aStart - bStart;
+          });
+
+          let cursor = 0; // JS index within the line
+          const parts = [];
+
+          for (const it of issues) {
+            const match = String(it.Match ?? '');
+            const hasSpan = Array.isArray(it.Span) && it.Span.length >= 2;
+            let startCol = hasSpan ? Number(it.Span[0]) : null; // 1-based
+            let endCol = hasSpan ? Number(it.Span[1]) : null;   // 1-based inclusive
+            let foundAt = -1;
+            let endAt = -1;
+            if (Number.isFinite(startCol)) {
+              const approx = Math.max(0, startCol - 1);
+              if (Number.isFinite(endCol) && endCol >= startCol) {
+                // Use explicit [start,end] columns
+                foundAt = approx;
+                endAt = Math.min(line.length, endCol); // convert to exclusive below
+              } else {
+                // Derive end from Match length
+                foundAt = line.indexOf(match, approx);
+                if (foundAt === -1) foundAt = line.indexOf(match);
+                if (foundAt !== -1) endAt = foundAt + match.length;
+              }
+            } else {
+              foundAt = line.indexOf(match, cursor);
+              if (foundAt === -1) foundAt = line.indexOf(match);
+              if (foundAt !== -1) endAt = foundAt + match.length;
+            }
+
+            if (!match || foundAt === -1 || endAt === -1) {
+              continue; // skip if we can't locate
+            }
+
+            // Normalize to exclusive index when Span used
+            if (hasSpan && Number.isFinite(endCol)) {
+              // endCol is inclusive column number; convert to exclusive index
+              endAt = Math.max(foundAt, Math.min(line.length, endCol));
+            }
+            if (endAt <= cursor) {
+              // overlap or behind cursor; skip
+              continue;
+            }
+
+            // Push preceding normal text
+            if (foundAt > cursor) {
+              parts.push(sanitize(line.slice(cursor, foundAt)));
+            }
+
+            const tooltip = sanitizePlain(it.Message || it.Check || 'Issue');
+            const sev = severityClass(it.Severity);
+            parts.push(`<span class="hl ${sev}" tabindex="0" data-tooltip="${sanitize(tooltip)}">${sanitize(line.slice(foundAt, endAt))}</span>`);
+            cursor = endAt;
+          }
+
+          // Remainder of the line
+          if (cursor < line.length) {
+            parts.push(sanitize(line.slice(cursor)));
+          }
+
+          outLines.push(parts.join(''));
+        }
+
+        // Preserve trailing newline if present
+  if (rawText.endsWith('\n')) outLines.push('');
+  // Convert to contenteditable HTML: join lines with <br>
+  editor.innerHTML = outLines.join('\n').replace(/\n/g, '<br>');
+      }
+
+  async function lint() {
+  const text = getPlainText();
+        if (!text.trim()) {
+          statusEl.textContent = 'Please enter some text to lint.';
+          return;
+        }
+        lintBtn.setAttribute('aria-busy', 'true');
+        lintBtn.disabled = true;
+        statusEl.textContent = 'Linting…';
+        try {
+          const res = await fetch('/lint', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          if (!res.ok) {
+            const t = await res.text();
+            throw new Error(`${res.status} ${res.statusText}: ${t}`);
+          }
+          const data = await res.json();
+          renderHighlights(text, data);
+          // Count issues for status
+          const files = Object.keys(data || {});
+          let count = 0;
+          for (const f of files) count += (data[f] || []).length;
+          statusEl.textContent = `Found ${count} issue${count === 1 ? '' : 's'}.`;
+        } catch (err) {
+          console.error(err);
+          statusEl.textContent = 'Failed to lint. See console.';
+          editor.textContent = 'Error: ' + (err?.message || String(err));
+        } finally {
+          lintBtn.removeAttribute('aria-busy');
+          lintBtn.disabled = false;
+        }
+      }
+
+      lintBtn.addEventListener('click', lint);
+      clearBtn.addEventListener('click', () => {
+        editor.textContent = '';
+        statusEl.textContent = '';
+        editor.focus();
+      });
+
+  // Example starter text (optional):
+  // editor.textContent = 'This is an example—text with an Em Dash.\nAnd another line with vale-server product name.';
+
+      // Get plain text from the contenteditable (preserves line breaks via innerText under pre-wrap)
+      function getPlainText() {
+        return editor.innerText.replace(/\u00A0/g, ' '); // normalize nbsp
+      }
+
+      // Allow hover/click on highlights while keeping typing in textarea
+      // Ensure highlights are interactive but editor remains editable
+      const observer = new MutationObserver(() => {
+        editor.querySelectorAll('.hl').forEach((el) => {
+          el.addEventListener('click', () => editor.focus());
+        });
+      });
+      observer.observe(editor, { childList: true, subtree: true });
+
+      // JS-managed tooltip for robust positioning (singleton)
+      let tooltip = document.getElementById('tooltip');
+      if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'tooltip';
+        document.body.appendChild(tooltip);
+      }
+      let tooltipVisible = false;
+      function showTooltip(text, x, y) {
+        tooltip.textContent = text;
+        tooltip.style.display = 'block';
+        tooltipVisible = true;
+        positionTooltip(x, y);
+      }
+      function hideTooltip() {
+        tooltip.style.display = 'none';
+        tooltipVisible = false;
+      }
+      function positionTooltip(x, y) {
+        const padding = 8;
+        const rect = tooltip.getBoundingClientRect();
+        let left = x + padding;
+        let top = y + padding;
+        // keep inside viewport
+        if (left + rect.width > window.innerWidth - padding) {
+          left = x - rect.width - padding;
+        }
+        if (top + rect.height > window.innerHeight - padding) {
+          top = y - rect.height - padding;
+        }
+        tooltip.style.left = `${Math.max(padding, left)}px`;
+        tooltip.style.top = `${Math.max(padding, top)}px`;
+      }
+
+      editor.addEventListener('mousemove', (e) => {
+        const target = e.target;
+        if (target && target.classList && target.classList.contains('hl')) {
+          const text = target.getAttribute('data-tooltip') || '';
+          showTooltip(text, e.clientX, e.clientY);
+        } else if (tooltipVisible) {
+          hideTooltip();
+        }
+      });
+      editor.addEventListener('mouseleave', hideTooltip);
+      window.addEventListener('scroll', () => { if (tooltipVisible) hideTooltip(); }, { passive: true });
+
+      // Clear highlights when user edits (back to plain text)
+      let clearOnEditTimer;
+      editor.addEventListener('input', () => {
+        // Debounce small bursts
+        clearTimeout(clearOnEditTimer);
+        clearOnEditTimer = setTimeout(() => {
+          // If there are highlight spans, normalize to plain text
+          if (editor.querySelector('.hl')) {
+            const t = getPlainText();
+            editor.textContent = t;
+          }
+        }, 100);
+      });
+
+      // Theme control
+      function applyTheme(value) {
+        const html = document.documentElement;
+        if (value === 'light' || value === 'dark') {
+          html.setAttribute('data-theme', value);
+        } else {
+          html.removeAttribute('data-theme'); // Auto (prefers-color-scheme)
+        }
+      }
+      themeSelect.addEventListener('change', () => {
+        const val = themeSelect.value;
+        try { localStorage.setItem('vale-theme', val); } catch {}
+        applyTheme(val);
+      });
+      // Initialize theme from storage
+      (function initTheme() {
+        let stored;
+        try { stored = localStorage.getItem('vale-theme'); } catch {}
+        if (!stored) stored = 'auto';
+        themeSelect.value = stored;
+        applyTheme(stored);
+      })();
+    </script>
+  </body>
+  </html>

@@ -1,0 +1,53 @@
+## UBI-based image: single-stage on Node UBI minimal with Vale installed
+FROM registry.access.redhat.com/ubi10/nodejs-22-minimal
+
+ARG TARGETARCH
+ARG VALE_VERSION=3.12.0
+
+ENV NODE_ENV=production \
+		ADDRESS=0.0.0.0 \
+		PORT=3000
+
+USER root
+# Disable DNF plugins (avoids RHSM warnings in containers where no entitlements exist)
+RUN mkdir -p /etc/dnf \
+ && { [ -f /etc/dnf/dnf.conf ] || printf '[main]\n' > /etc/dnf/dnf.conf; } \
+ && echo 'plugins=0' >> /etc/dnf/dnf.conf
+# Install basic tools required to fetch and unpack Vale
+RUN microdnf -y update \
+ && microdnf -y install gzip \
+ && microdnf -y clean all
+
+# Install Vale for the current architecture (amd64/arm64)
+RUN set -eux; \
+	case "${TARGETARCH}" in \
+		amd64) VALE_ARCH=x86_64 ;; \
+		arm64) VALE_ARCH=arm64 ;; \
+		*) echo "Unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+	esac; \
+	VALE_URL="https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_${VALE_ARCH}.tar.gz"; \
+	echo "Downloading Vale ${VALE_VERSION} from: $VALE_URL"; \
+	curl -fsSL "$VALE_URL" -o /tmp/vale.tar.gz; \
+	tar -xzf /tmp/vale.tar.gz -C /usr/local/bin vale; \
+	rm -f /tmp/vale.tar.gz; \
+	chmod +x /usr/local/bin/vale; \
+	vale --version
+
+RUN microdnf -y remove tar gzip && microdnf -y clean all
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+RUN npm install --omit=dev
+
+COPY . ./
+
+RUN vale sync
+
+# non-root ownership
+RUN chown -R 1001:0 /usr/src/app
+USER 1001
+
+EXPOSE 3000
+
+CMD ["node", "index.js"]
