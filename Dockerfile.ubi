@@ -21,7 +21,7 @@ RUN microdnf -y update \
 # Install Vale for the current architecture (amd64/arm64)
 RUN set -eux; \
 	case "${TARGETARCH}" in \
-		amd64) VALE_ARCH=x86_64 ;; \
+		amd64) VALE_ARCH=64-bit ;; \
 		arm64) VALE_ARCH=arm64 ;; \
 		*) echo "Unsupported arch: ${TARGETARCH}"; exit 1 ;; \
 	esac; \
