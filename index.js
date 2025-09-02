@@ -74,7 +74,15 @@ fastify.route({
   method: "GET",
   url: "/",
   handler: async (request, reply) => {
-    reply.code(200).send("Use POST /lint to lint your text.");
+    try {
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+      const filePath = path.join(process.cwd(), 'index.html');
+      const html = await fs.readFile(filePath, 'utf8');
+      reply.type('text/html; charset=utf-8').code(200).send(html);
+    } catch (err) {
+      reply.code(200).send("Use POST /lint to lint your text.");
+    }
   },
 });
 
