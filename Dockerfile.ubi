@@ -3,12 +3,19 @@ FROM registry.access.redhat.com/ubi10/nodejs-22-minimal
 
 ARG TARGETARCH
 ARG VALE_VERSION=3.12.0
+ARG USERGROUP
 
 ENV NODE_ENV=production \
 		ADDRESS=0.0.0.0 \
 		PORT=8080
 
 USER root
+
+# Add user group for the USERGROUP
+RUN addgroup allusers && adduser -S -G allusers $USERGROUP
+RUN mkdir -p /.npm
+RUN mkdir -p /.npm/_cacache
+
 # Disable DNF plugins (avoids RHSM warnings in containers where no entitlements exist)
 RUN mkdir -p /etc/dnf \
  && { [ -f /etc/dnf/dnf.conf ] || printf '[main]\n' > /etc/dnf/dnf.conf; } \
@@ -44,10 +51,12 @@ COPY . ./
 
 RUN vale sync
 
-# non-root ownership
-RUN chown -R 1001:0 /usr/src/app
-USER 1001
+# Set ownership for the USERGROUP
+RUN chown -R $USERGROUP:allusers /usr/src/app
+RUN chown -R $USERGROUP:allusers /.npm
+RUN chmod -R 777 /usr/src/app
 
 EXPOSE 8080
+USER $USERGROUP
 
 CMD ["node", "index.js"]
