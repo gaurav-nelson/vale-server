@@ -1,6 +1,6 @@
 {
   "name": "vale-server",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "API backend for Vale with Vale at Red Hat rules",
   "main": "index.js",
   "type": "module",
